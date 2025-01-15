@@ -1,11 +1,12 @@
 const axios = require('axios');
+const { db } = require('../config/firebase');
+const { collection, addDoc, query, where, getDocs, doc, getDoc } = require("firebase/firestore");
 require('dotenv').config();
 
-
 const WEATHER_API_KEY = process.env.WEATHER_API;
-const GOOGLE_API_KEY =  process.env.GOOGLE_PLACES_API;
+const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API;
 
-// Fetch weather data for a specific city
+// Fetch Weather Data for a City
 const getWeather = async (req, res) => {
     const { city } = req.body;
     if (!city) {
@@ -24,7 +25,7 @@ const getWeather = async (req, res) => {
     }
 };
 
-// Fetch nearby places based on location coordinates and search query
+// Fetch Nearby Places Based on Location
 const getNearbyPlaces = async (req, res) => {
     const { lat, lon, query } = req.body;
 
@@ -44,8 +45,71 @@ const getNearbyPlaces = async (req, res) => {
     }
 };
 
-// Export controller functions
+
+const addFavorite = async (req, res) => {
+    const { place, userId } = req.body;
+
+    if (!place || !userId) {
+        return res.status(400).json({ message: "Place data and userId are required to add to favorites." });
+    }
+
+    if (!place.name || !place.address || !place.location || !place.rating) {
+        return res.status(400).json({
+            message: "Place must include name, address, location, and rating.",
+        });
+    }
+
+    try {
+        console.log("Checking user in Firestore...");
+        const userRef = doc(db, "users", userId);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+            console.log("User not found!");
+            return res.status(400).json({ message: "User not found." });
+        }
+
+        console.log("User exists, adding favorite...");
+        const docRef = await addDoc(collection(db, 'favorites'), {
+            ...place, 
+            userId,
+            addedAt: new Date()
+        });
+
+        res.json({ message: "Place added to favorites successfully", id: docRef.id });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error adding favorite to Firestore.", error: error.message });
+    }
+};
+
+
+const getFavorites = async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) {
+        return res.status(400).json({ message: "UserId is required to retrieve favorites." });
+    }
+
+    try {
+       
+        const q = query(collection(db, 'favorites'), where('userId', '==', userId));
+
+      
+        const snapshot = await getDocs(q);
+
+      
+        const favorites = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        res.json({ message: "Favorites retrieved successfully", favorites });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error retrieving favorites from Firestore.", error: error.message });
+    }
+};
+
 module.exports = {
     getWeather,
-    getNearbyPlaces
+    getNearbyPlaces,
+    addFavorite,
+    getFavorites
 };
